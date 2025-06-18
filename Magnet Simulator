@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>High-Fidelity Magnetism Simulator</title>
+    <style>
+        :root {
+            --accent-color: #03a9f4;
+            --danger-color: #f44336;
+            --dark-color: #1a1a1a;
+            --light-text: #f0f0f0;
+            --panel-bg: rgba(25, 25, 25, 0.85);
+        }
+        body { 
+            margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+            background-color: #000; color: var(--light-text); 
+            overflow: hidden; touch-action: none; 
+        }
+        #game-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; }
+        #c { display: block; width: 100%; height: 100%; }
+        
+        .ui-panel { 
+            background: var(--panel-bg);
+            padding: 1em 1.5em; border-radius: 15px; 
+            text-align: center; backdrop-filter: blur(10px); 
+            border: 1px solid rgba(255, 255, 255, 0.2); 
+            pointer-events: all;
+        }
+
+        #instructions { 
+            position: absolute; top: 50%; left: 50%; 
+            transform: translate(-50%, -50%); 
+            width: 450px; max-width: 90%; z-index: 200;
+        }
+        h1 { margin-top: 0; color: var(--accent-color); font-size: 2.2em; text-shadow: 0 0 10px rgba(3, 169, 244, 0.5); }
+        p { line-height: 1.5; }
+        #startButton {
+            background-color: var(--accent-color); color: white; border: none; padding: 12px 24px;
+            border-radius: 8px; font-size: 1em; font-weight: bold;
+            cursor: pointer; transition: background-color 0.2s, transform 0.2s; margin-top: 15px;
+        }
+        #startButton:hover { background-color: #0288d1; transform: scale(1.05); }
+        
+        #ui-toolbar {
+            position: absolute; bottom: 15px; left: 50%;
+            transform: translateX(-50%);
+            display: flex; align-items: center; gap: 5px; padding: 8px;
+            background: var(--panel-bg); border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px); pointer-events: all; z-index: 100;
+        }
+        
+        #popup-container {
+            position: absolute;
+            bottom: 85px;
+            left: 50%;
+            transform: translateX(-50%);
+            pointer-events: none;
+            z-index: 99;
+            display: flex;
+            justify-content: center;
+        }
+        
+        .popup-panel {
+            width: 280px; padding: 15px; border-radius: 12px;
+            display: none;
+            flex-direction: column; gap: 12px;
+            pointer-events: all;
+        }
+        .popup-panel.visible {
+            display: flex;
+        }
+
+        .control-group { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        label { font-size: 0.9em; font-weight: bold; color: var(--accent-color); }
+        input[type="range"] { 
+            -webkit-appearance: none; width: 200px; height: 8px; 
+            background: rgba(255,255,255,0.3); border-radius: 5px; outline: none; 
+        }
+        input[type="range"]::-webkit-slider-thumb { 
+            -webkit-appearance: none; appearance: none; width: 20px; height: 20px; 
+            background: var(--accent-color); cursor: pointer; border-radius: 50%; 
+            border: 2px solid white; 
+        }
+        select { 
+            background-color: #333; color: white; border: 1px solid rgba(255,255,255,0.5); 
+            padding: 8px 12px; font-size: 0.9em; border-radius: 8px; cursor: pointer;
+            width: 200px; text-align: center;
+        }
+
+        .icon-button {
+            background-color: transparent; border: none; width: 44px; height: 44px;
+            border-radius: 12px; cursor: pointer;
+            display: flex; justify-content: center; align-items: center;
+            transition: background-color 0.2s; padding: 0; position: relative;
+        }
+        .icon-button:hover, .icon-button.active { background-color: rgba(3, 169, 244, 0.3); }
+        .icon-button svg { width: 24px; height: 24px; fill: white; }
+        .icon-button .tooltip {
+            position: absolute; bottom: 125%; left: 50%;
+            transform: translateX(-50%); background-color: var(--dark-color); color: white;
+            padding: 5px 10px; border-radius: 5px; font-size: 0.8em;
+            white-space: nowrap; opacity: 0; visibility: hidden;
+            transition: opacity 0.3s, visibility 0.3s; pointer-events: none;
+        }
+        .icon-button:hover .tooltip { opacity: 1; visibility: visible; }
+        
+        .separator { width: 1px; height: 30px; background-color: rgba(255, 255, 255, 0.2); margin: 0 5px; }
+        .hidden { display: none !important; }
+
+        #debug-panel {
+            position: absolute; top: 10px; left: 10px; background: rgba(0, 0, 0, 0.7); 
+            padding: 10px; border-radius: 5px; font-family: monospace; font-size: 12px; 
+            pointer-events: none; z-index: 101;
+        }
+        #debug-panel.active { pointer-events: all; background: rgba(0, 0, 0, 0.9); }
+        
+        @media (max-width: 768px) {
+            #ui-toolbar { width: 95%; }
+            .popup-panel { width: 90vw; }
+            input[type="range"], select { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container"><canvas id="c"></canvas></div>
+
+    <div id="instructions" class="ui-panel">
+        <h1>High-Fidelity Magnetism Simulator</h1>
+        <p>Click and drag anywhere to move the magnet. Drag the background to rotate the camera. Pinch to zoom. Use the controls below to adjust parameters.</p>
+        <button id="startButton">Start Simulation</button>
+    </div>
+    
+    <div id="ui-toolbar" class="hidden">
+        <button class="icon-button" data-popup="settings-popup"><span class="tooltip">Scene</span><svg viewBox="0 0 24 24"><path d="M19.43,12.98C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.65 15.48,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.52,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.98L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.52,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.48,18.68 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.98M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5Z" /></svg></button>
+        <button class="icon-button" data-popup="magnet-popup"><span class="tooltip">Magnet</span><svg viewBox="0 0 24 24"><path d="M3,3V11A9,9 0 0,0 12,20A9,9 0 0,0 21,11V3H15V11A3,3 0 0,1 12,14A3,3 0 0,1 9,11V3H3M5,5H7V11A5,5 0 0,0 12,16A5,5 0 0,0 17,11V5H19V11A7,7 0 0,1 12,18A7,7 0 0,1 5,11V5Z"/></svg></button>
+        <button class="icon-button" data-popup="objects-popup"><span class="tooltip">Objects</span><svg viewBox="0 0 24 24"><path d="M12,2A10,10,0,1,0,22,12,10,10,0,0,0,12,2Z"/></svg></button>
+        <div class="separator"></div>
+        <button class="icon-button" id="magnetForceButton"><span class="tooltip">Toggle Polarity</span><svg id="magnetForceAttract" viewBox="0 0 24 24" class="hidden"><path d="M13 4v7h3l-4 4-4-4h3V4h2M5 18v2h14v-2H5Z"/></svg><svg id="magnetForceRepel" viewBox="0 0 24 24"><path d="m11 20-4-4h3V9h2v7h3l-4 4M5 4v2h14V4H5Z"/></svg></button>
+        <button class="icon-button" id="magnetizeButton"><span class="tooltip">Magnetize Objects</span><svg viewBox="0 0 24 24"><path d="M12,1L9,9L1,12L9,15L12,23L15,15L23,12L15,9L12,1Z" /></svg></button>
+        <div class="separator"></div>
+        <button class="icon-button" data-popup="view-popup"><span class="tooltip">View</span><svg viewBox="0 0 24 24"><path d="M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z"/></svg></button>
+        <div class="separator"></div>
+        <button class="icon-button" id="sceneResetButton"><span class="tooltip">Reset Scene</span><svg viewBox="0 0 24 24"><path d="M12,4C7.58,4 4,7.58 4,12C4,16.42 7.58,20 12,20C16.42,20 20,16.42 20,12C20,7.58 16.42,4 12,4M12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6A6,6 0 0,1 18,12A6,6 0 0,1 12,18M13,11H17V13H11V7H13V11Z"/></svg></button>
+    </div>
+
+    <div id="popup-container">
+        <div id="settings-popup" class="popup-panel ui-panel"><div class="control-group"><label for="scenarioSelect">Scenario</label><select id="scenarioSelect"></select></div><div class="control-group"><label for="gravitySlider">Gravity: <span id="gravityValue">25</span> m/s²</label><input type="range" id="gravitySlider" min="0" max="50" value="25"></div><div class="control-group"><label for="platformSizeSlider">Platform Size: <span id="platformSizeValue">30</span></label><input type="range" id="platformSizeSlider" min="10" max="50" value="30"></div><div class="control-group"><label for="boxSizeSlider">Bounds Size: <span id="boxSizeValue">30</span></label><input type="range" id="boxSizeSlider" min="15" max="60" value="30"></div></div>
+        <div id="magnet-popup" class="popup-panel ui-panel"><div class="control-group"><label for="magnetMetalSelector">Magnet Material</label><select id="magnetMetalSelector"></select></div><div class="control-group"><label for="strengthSlider">Power: <span id="strengthValue">100</span>%</label><input type="range" id="strengthSlider" min="0" max="100" value="100"></div><div class="control-group"><label for="inertiaSlider">Inertia: <span id="inertiaValue">50</span></label><input type="range" id="inertiaSlider" min="10" max="500" value="50"></div></div>
+        <div id="objects-popup" class="popup-panel ui-panel"><div class="control-group"><label for="ballMetalSelector">Object Material</label><select id="ballMetalSelector"></select></div><div class="control-group"><label for="ballCountSlider">Count: <span id="ballCountValue">80</span></label><input type="range" id="ballCountSlider" min="10" max="400" value="80"></div></div>
+        <div id="view-popup" class="popup-panel ui-panel"><div class="control-group"><label>Toggle Magnet Shape</label><button class="icon-button" id="magnetShapeButton" style="background: #333; margin: 0 auto;"><svg id="magnetShapeCube" viewBox="0 0 24 24"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Z"/></svg><svg id="magnetShapeSphere" viewBox="0 0 24 24" class="hidden"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Z"/></svg></button></div><div class="control-group"><label>Toggle Object Shape</label><button class="icon-button" id="ballShapeButton" style="background: #333; margin: 0 auto;"><svg id="ballShapeCubeIcon" viewBox="0 0 24 24" class="hidden"><path d="M19 3v18H5V3h16Z"/></svg><svg id="ballShapeSphereIcon" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Z"/></svg></button></div><div class="control-group"><label for="fieldLinesSlider">Field Lines: <span id="fieldLinesValue">8</span></label><input type="range" id="fieldLinesSlider" min="0" max="24" value="8" step="2"></div><div class="control-group"><label>Other Toggles</label><div style="display: flex; gap: 10px; justify-content: center;"><button class="icon-button" id="bboxButton" style="background: #333;"><span class="tooltip">Show Bounds</span><svg viewBox="0 0 24 24"><path d="M19,19H5V5H19M19,3H5A2,2 0 0,0 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5A2,2 0 0,0 19,3Z" /></svg></button><button class="icon-button" id="debugButton" style="background: #333;"><span class="tooltip">Debug Info</span><svg viewBox="0 0 24 24"><path d="M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M11,7H13V9H11V7M11,11H13V17H11V11Z"/></svg></button></div></div></div>
+    </div>
+
+    <div id="debug-panel">
+        <div>FPS: <span id="fps-counter">0</span></div>
+        <div>Objects: <span id="object-counter">0</span></div>
+        <div>Forces: <span id="force-counter">0</span></div>
+    </div>
+
+    <script type="importmap">
+        { "imports": { 
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js", 
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } 
+        }
+    </script>
+    
+    <script type="module">
+        import * as THREE from 'three';
+        import * as CANNON from 'https://unpkg.com/cannon-es@0.20.0/dist/cannon-es.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- Physics & Material Constants ---
+        const MU0 = 4 * Math.PI * 1e-7, MAX_FORCE = 5000;
+        const materialProperties = { 
+            'Iron':   { density: 7874, chi: 5000, color: 0xC0C0C0 }, 
+            'Cobalt': { density: 8834, chi: 250, color: 0x7070FF },
+            'Nickel': { density: 8900, chi: 600, color: 0xA0A0A0 },
+            'Alnico':    { density: 7300, Br: 1.25, chi: 5, color: 0x888899 }, 
+            'Neodymium': { density: 7500, Br: 1.4,  chi: 5, color: 0x5050FF },
+            'Aluminum': { density: 2700, chi: 0, color: 0xCCCCCC }, 
+        };
+        
+        // --- Scene, Camera, Renderer ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 30, 35); // Visual from Polished
+        const renderer = new THREE.WebGLRenderer({ canvas: document.querySelector('#c'), antialias: true, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.toneMapping = THREE.ACESFilmicToneMapping; // Visual from Polished
+        renderer.toneMappingExposure = 1.2; // Visual from Polished
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Visual from Polished
+
+        // --- Controls, Lighting & Environment ---
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxDistance = 80; // Visual from Polished
+        controls.minDistance = 10;
+        controls.maxPolarAngle = Math.PI * 0.9;
+        
+        scene.background = new THREE.Color(0x101010);
+        const envMap = new THREE.CubeTextureLoader().setPath('https://threejs.org/examples/textures/cube/skyboxsun25deg/').load(['px.jpg', 'nx.jpg', 'py.jpg', 'ny.jpg', 'pz.jpg', 'nz.jpg']);
+        scene.environment = envMap;
+        
+        // --- LIGHTING SETUP (from Polished) ---
+        scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+        const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+        scene.add(hemisphereLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        directionalLight.position.set(15, 30, 10); 
+        directionalLight.castShadow = true;
+        directionalLight.shadow.mapSize.set(4096, 4096);
+        directionalLight.shadow.bias = -0.0005;
+        directionalLight.shadow.camera.near = 1;
+        directionalLight.shadow.camera.far = 60; 
+        scene.add(directionalLight);
+        
+        // --- Physics World (from Source) ---
+        const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -25, 0), allowSleep: true });
+        world.broadphase = new CANNON.SAPBroadphase(world);
+        world.solver.iterations = 10;
+        const groundPhysMat = new CANNON.Material('ground'), objectPhysMat = new CANNON.Material('object'), magnetPhysMat = new CANNON.Material('magnet');
+        world.addContactMaterial(new CANNON.ContactMaterial(groundPhysMat, objectPhysMat, { friction: 0.5, restitution: 0.1 }));
+        world.addContactMaterial(new CANNON.ContactMaterial(objectPhysMat, objectPhysMat, { friction: 0.4, restitution: 0.1 }));
+        world.addContactMaterial(new CANNON.ContactMaterial(magnetPhysMat, objectPhysMat, { friction: 0.9, restitution: 0.0 }));
+
+        // --- Simulation State & Objects (from Source) ---
+        let platformMesh, magnet = { mesh: null, body: null, shape: 'cube', forceType: -1 };
+        let objects = [], boundingPlanes = [], fieldLines = [], debugMode = false, ballShape = 'sphere', areObjectsMagnetized = false;
+        
+        const bboxVisuals = new THREE.Group();
+        bboxVisuals.visible = false;
+        scene.add(bboxVisuals);
+        const getObjectVolume = (body) => { const s=body.shapes[0]; return s.type===CANNON.Shape.types.SPHERE ? (4/3)*Math.PI*s.radius**3 : s.halfExtents.x*s.halfExtents.y*s.halfExtents.z*8; };
+
+        // --- Object & Environment Creation (from Source, with visual tweaks) ---
+        function updatePlatform(size) {
+            if (platformMesh) scene.remove(platformMesh);
+
+            const shadowMargin = 15; // Robust dynamic shadow calculation
+            directionalLight.shadow.camera.left = -size / 2 - shadowMargin;
+            directionalLight.shadow.camera.right = size / 2 + shadowMargin;
+            directionalLight.shadow.camera.top = size / 2 + shadowMargin;
+            directionalLight.shadow.camera.bottom = -size / 2 - shadowMargin;
+            directionalLight.shadow.camera.updateProjectionMatrix();
+
+            const textureLoader = new THREE.TextureLoader();
+            platformMesh = new THREE.Mesh( new THREE.BoxGeometry(size, 0.5, size), new THREE.MeshStandardMaterial({ 
+                map: textureLoader.load('https://threejs.org/examples/textures/hardwood2_diffuse.jpg', t=>{ t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(size/5,size/5); }),
+                roughness: 0.7, // Visual from Polished
+                metalness: 0.1 // Visual from Polished
+            }));
+            platformMesh.position.y = -0.25;
+            platformMesh.receiveShadow = true;
+            scene.add(platformMesh); 
+            resetObjects();
+        }
+
+        function updateBoundingPlanes(size, height = 20) {
+            boundingPlanes.forEach(p => world.removeBody(p.body)); bboxVisuals.clear(); boundingPlanes = [];
+            const wallMat = new THREE.MeshBasicMaterial({ color: 0x03a9f4, wireframe: true, transparent: true, opacity: 0.1 });
+            const pDefs = [{p:[0,0,0],q:new CANNON.Quaternion().setFromEuler(-Math.PI/2,0,0)},{p:[0,height,0],q:new CANNON.Quaternion().setFromEuler(Math.PI/2,0,0),vS:[size,1,size],vP:[0,height,0]},{p:[size/2,0,0],q:new CANNON.Quaternion().setFromEuler(0,-Math.PI/2,0),vS:[1,height,size],vP:[size/2,height/2,0]},{p:[-size/2,0,0],q:new CANNON.Quaternion().setFromEuler(0,Math.PI/2,0),vS:[1,height,size],vP:[-size/2,height/2,0]},{p:[0,0,size/2],q:new CANNON.Quaternion().setFromEuler(0,Math.PI,0),vS:[size,height,1],vP:[0,height/2,size/2]},{p:[0,0,-size/2],q:new CANNON.Quaternion().setFromEuler(0,0,0),vS:[size,height,1],vP:[0,height/2,-size/2]}];
+            pDefs.forEach(d => {
+                const body = new CANNON.Body({type:CANNON.Body.STATIC, shape:new CANNON.Plane(), material:groundPhysMat});
+                body.position.set(...d.p); body.quaternion.copy(d.q); world.addBody(body);
+                let mesh = null; if (d.vS) { mesh = new THREE.Mesh(new THREE.BoxGeometry(...d.vS),wallMat); mesh.position.set(...d.vP); bboxVisuals.add(mesh); }
+                boundingPlanes.push({body,mesh});
+            });
+        }
+        
+        function createMagnet() { 
+            if (magnet.mesh) scene.remove(magnet.mesh); if (magnet.body) world.removeBody(magnet.body); 
+            const props = materialProperties[document.getElementById('magnetMetalSelector').value];
+            const mat = new THREE.MeshStandardMaterial({ color: props.color, metalness: 1.0, roughness: 0.1, envMap: scene.environment }); // Visual from Polished
+            let shape, mesh;
+            if (magnet.shape === 'cube') { const s = 1.0; mesh = new THREE.Mesh(new THREE.BoxGeometry(s*2,s*2,s*2), mat); shape = new CANNON.Box(new CANNON.Vec3(s,s,s)); } 
+            else { const r = 1.2; mesh = new THREE.Mesh(new THREE.SphereGeometry(r,32,16), mat); shape = new CANNON.Sphere(r); }
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            scene.add(mesh);
+            const body = new CANNON.Body({ shape, mass: parseFloat(document.getElementById('inertiaSlider').value), linearDamping: 0.5, angularDamping: 0.5, material: magnetPhysMat });
+            body.position.set(0, 10, 0);
+            const power = parseFloat(document.getElementById('strengthSlider').value) / 100;
+            const dipoleMag = (props.Br * power) * getObjectVolume(body) / MU0;
+            body.dipole = new CANNON.Vec3(0, dipoleMag * magnet.forceType, 0); body.isMagnet = true;
+            world.addBody(body); magnet = { ...magnet, mesh, body };
+        }
+
+        function resetObjects() {
+            objects.forEach(o => { scene.remove(o.mesh); world.removeBody(o.body); }); objects = [];
+            const count = parseInt(document.getElementById('ballCountSlider').value);
+            const props = materialProperties[document.getElementById('ballMetalSelector').value];
+            const mat = new THREE.MeshStandardMaterial({ color: props.color, metalness: 0.9, roughness: 0.2, envMap: scene.environment }); // Visual from Polished
+            for (let i = 0; i < count; i++) {
+                const s = 0.8 + Math.random() * 0.4; let mesh, body;
+                if (ballShape === 'sphere') { const r = 0.25 * s; mesh = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 12), mat.clone()); body = new CANNON.Body({ mass: props.density*getObjectVolume({shapes:[new CANNON.Sphere(r)]}), shape:new CANNON.Sphere(r), material:objectPhysMat, linearDamping:0.2, angularDamping:0.2}); } 
+                else { const h = 0.4 * s; mesh = new THREE.Mesh(new THREE.BoxGeometry(h,h,h), mat.clone()); body = new CANNON.Body({ mass: props.density*(h**3), shape:new CANNON.Box(new CANNON.Vec3(h/2,h/2,h/2)), material:objectPhysMat, linearDamping:0.2, angularDamping:0.2}); }
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                body.position.set((Math.random()-0.5)*(platformMesh.geometry.parameters.width-6), 5+Math.random()*10, (Math.random()-0.5)*(platformMesh.geometry.parameters.depth-6));
+                body.materialProps = props; body.isMagnetized = false; body.permanentDipole = null;
+                scene.add(mesh); world.addBody(body); objects.push({ mesh, body, originalMaterial: mat });
+            }
+            document.getElementById('object-counter').textContent = objects.length;
+        }
+        
+        function resetScene() { resetObjects(); createMagnet(); areObjectsMagnetized = false; const btn=document.getElementById('magnetizeButton'); btn.style.backgroundColor='transparent'; btn.querySelector('.tooltip').textContent='Magnetize Objects'; controls.reset(); camera.position.set(0, 30, 35); camera.lookAt(0,0,0); }
+        function updateFieldLines() { fieldLines.forEach(l => scene.remove(l)); fieldLines = []; if (parseInt(document.getElementById('fieldLinesSlider').value) === 0 || !magnet.body) return; const c=parseInt(document.getElementById('fieldLinesSlider').value), r=magnet.shape==='cube'?1.5:1.2, l=15; for (let i=0;i<c;i++){const a=(i/c)*Math.PI*2,p=[];p.push(new THREE.Vector3(Math.cos(a)*r,0,Math.sin(a)*r)); for(let j=1;j<=20;j++){const t=j/20; p.push(new THREE.Vector3(p[0].x*(1-t*0.5),magnet.forceType*l*t,p[0].z*(1-t*0.5)));} const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(p),new THREE.LineBasicMaterial({color:magnet.forceType>0?0xff4444:0x4444ff,transparent:true,opacity:0.7}));line.position.copy(magnet.mesh.position);scene.add(line);fieldLines.push(line);}}
+
+        function applyMagnetics() {
+            if (!magnet.body) return;
+            const dipoleMag = (materialProperties[document.getElementById('magnetMetalSelector').value].Br * (parseFloat(document.getElementById('strengthSlider').value)/100)) * getObjectVolume(magnet.body) / MU0;
+            magnet.body.dipole.set(0, dipoleMag * magnet.forceType, 0);
+            const sources = [magnet.body, ...objects.filter(o => o.body.isMagnetized).map(o => o.body)]; let f=0;
+            for (const src of sources) {
+                const m1 = src.quaternion.vmult(src.isMagnet ? src.dipole : src.permanentDipole);
+                for (const tgt of objects) {
+                    if (src === tgt.body) continue;
+                    const r = tgt.body.position.vsub(src.position); const dSq = r.lengthSquared(); if(dSq < 1e-4) continue;
+                    const dist = Math.sqrt(dSq), rhat = r.scale(1/dist);
+                    const B = rhat.scale(3*m1.dot(rhat)).vsub(m1).scale(MU0/(4*Math.PI*(dist+0.1)**3));
+                    const m2 = tgt.body.isMagnetized ? tgt.body.quaternion.vmult(tgt.body.permanentDipole) : B.scale(tgt.body.materialProps.chi * getObjectVolume(tgt.body)/MU0);
+                    if (tgt.body.materialProps.chi === 0 && !tgt.body.isMagnetized) continue;
+                    const forceMag = Math.max(-MAX_FORCE,Math.min(MAX_FORCE, (3*m2.dot(B)/(dist+0.1))*(areObjectsMagnetized?5:1)));
+                    if (tgt.body.sleepState === CANNON.Body.SLEEPING) tgt.body.wakeUp();
+                    tgt.body.applyForce(rhat.scale(-forceMag)); tgt.body.applyTorque(m2.cross(B)); f++;
+                }
+            } if (debugMode) document.getElementById('force-counter').textContent = f;
+        }
+
+        // --- Interaction System ---
+        const raycaster = new THREE.Raycaster(), mouse = new THREE.Vector2();
+        const groundDragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+        let isPointerDown = false;
+        let isDragging = false;
+        const MAGNET_DRAG_SPEED = 15;
+
+        function onPointerDown(event) {
+            if (event.target.closest('#ui-toolbar') || event.target.closest('#popup-container')) return;
+            isPointerDown = true;
+            raycaster.setFromCamera(mouse, camera);
+            if (magnet.mesh && raycaster.intersectObject(magnet.mesh).length > 0) {
+                isDragging = true;
+                controls.enabled = false;
+                magnet.body.wakeUp();
+                magnet.mesh.material.emissive.setHex(0x555555);
+            }
+        }
+        
+        function onPointerMove(event) {
+            const rect = renderer.domElement.getBoundingClientRect(); 
+            const x = event.clientX ?? event.touches?.[0].clientX; const y = event.clientY ?? event.touches?.[0].clientY; if (!x || !y) return;
+            mouse.x = ((x - rect.left) / rect.width) * 2 - 1; mouse.y = -((y - rect.top) / rect.height) * 2 + 1;
+            
+            raycaster.setFromCamera(mouse, camera);
+
+            if (isPointerDown && !isDragging) {
+                if (magnet.mesh && raycaster.intersectObject(magnet.mesh).length > 0) {
+                    isDragging = true;
+                    controls.enabled = false;
+                    magnet.body.wakeUp();
+                    magnet.mesh.material.emissive.setHex(0x555555);
+                }
+            }
+
+            if (isDragging && magnet.body) {
+                const target = new THREE.Vector3();
+                if (raycaster.ray.intersectPlane(groundDragPlane, target)) {
+                    const moveVec = new CANNON.Vec3(target.x, magnet.body.position.y, target.z).vsub(magnet.body.position);
+                    magnet.body.velocity.x = moveVec.x * MAGNET_DRAG_SPEED;
+                    magnet.body.velocity.z = moveVec.z * MAGNET_DRAG_SPEED;
+                }
+            }
+        }
+
+        function onPointerUp() { 
+            isPointerDown = false;
+            if (isDragging) { 
+                isDragging = false; 
+                magnet.mesh.material.emissive.setHex(0x000000); 
+            }
+            controls.enabled = true;
+        }
+        
+        // --- Animation Loop ---
+        const clock = new THREE.Clock(); let lastFpsUpdate = 0;
+        function animate() {
+            requestAnimationFrame(animate); const dt = clock.getDelta();
+            if (performance.now() >= lastFpsUpdate + 1000) { document.getElementById('fps-counter').textContent = Math.round(1 / dt); lastFpsUpdate = performance.now(); }
+            if (magnet.body) { 
+                applyMagnetics(); 
+                fieldLines.forEach(l => l.position.copy(magnet.mesh.position)); 
+                const y = magnet.body.shapes[0].type===CANNON.Shape.types.SPHERE ? magnet.body.shapes[0].radius : magnet.body.shapes[0].halfExtents.y; 
+                magnet.body.position.y = y; 
+                magnet.body.velocity.y = 0; 
+            }
+            world.step(1/60, dt, 3); controls.update();
+            objects.forEach(o => { o.mesh.position.copy(o.body.position); o.mesh.quaternion.copy(o.body.quaternion); });
+            if (magnet.mesh && magnet.body) { magnet.mesh.position.copy(magnet.body.position); magnet.mesh.quaternion.copy(magnet.body.quaternion); }
+            renderer.render(scene, camera);
+        }
+
+        // --- Scenario & UI Init (from Source) ---
+        function loadScenario(name) {
+            const s = {levitation:{c:20,o:'Iron',m:'Neodymium',p:80,g:5}, chain:{c:120,o:'Nickel',m:'Neodymium',p:100,g:25}, ferrofluid:{c:200,o:'Iron',m:'Neodymium',p:100,g:10}, default:{c:80,o:'Iron',m:'Neodymium',p:100,g:25}}[name] || {c:80,o:'Iron',m:'Neodymium',p:100,g:25};
+            document.getElementById('ballCountSlider').value=s.c; document.getElementById('ballMetalSelector').value=s.o; document.getElementById('magnetMetalSelector').value=s.m; document.getElementById('strengthSlider').value=s.p; document.getElementById('gravitySlider').value=s.g; world.gravity.set(0,-s.g,0); resetScene();
+        }
+        function init() {
+            const mS=document.getElementById('magnetMetalSelector'), bS=document.getElementById('ballMetalSelector'), sS=document.getElementById('scenarioSelect'); Object.keys(materialProperties).forEach(m=>{const p=materialProperties[m]; if(p.Br)mS.innerHTML+=`<option value="${m}">${m}</option>`; if(p.chi>=0)bS.innerHTML+=`<option value="${m}">${m}</option>`;}); ['Default','Levitation','Chain','Ferrofluid'].forEach(s=>sS.innerHTML+=`<option value="${s.toLowerCase()}">${s}</option>`); mS.value='Neodymium'; bS.value='Iron';
+            let activePopupId = null; const popups=document.querySelectorAll('.popup-panel'), tbButtons=document.querySelectorAll('#ui-toolbar .icon-button[data-popup]');
+            function togglePopup(popupId) { const wasActive=activePopupId===popupId; tbButtons.forEach(b=>b.classList.remove('active')); popups.forEach(p=>p.classList.remove('visible')); activePopupId=null; if(!wasActive){ activePopupId=popupId; document.querySelector(`[data-popup="${popupId}"]`).classList.add('active'); document.getElementById(popupId).classList.add('visible'); } }
+            tbButtons.forEach(b=>b.addEventListener('click', e => { e.stopPropagation(); togglePopup(b.dataset.popup); }));
+            window.addEventListener('click', (e) => { if (!e.target.closest('#popup-container') && !e.target.closest('#ui-toolbar')) togglePopup(null); });
+            
+            document.getElementById('startButton').onclick = () => { document.getElementById('instructions').classList.add('hidden'); document.getElementById('ui-toolbar').classList.remove('hidden'); resetScene(); };
+            document.querySelectorAll('input[type=range]').forEach(el => el.addEventListener('input', e => { const valEl = document.getElementById(e.target.id.replace('Slider','Value')); if (valEl) valEl.textContent=e.target.value; }));
+            document.getElementById('inertiaSlider').addEventListener('input', e => { if (magnet.body) { magnet.body.mass=parseFloat(e.target.value); magnet.body.updateMassProperties(); }});
+            document.getElementById('gravitySlider').onchange = e => world.gravity.set(0,-parseInt(e.target.value),0);
+            document.getElementById('platformSizeSlider').onchange = e => updatePlatform(parseInt(e.target.value));
+            document.getElementById('boxSizeSlider').onchange = e => updateBoundingPlanes(parseInt(e.target.value));
+            document.getElementById('ballCountSlider').onchange = resetObjects; document.getElementById('fieldLinesSlider').onchange = updateFieldLines; document.getElementById('ballMetalSelector').onchange=resetObjects; document.getElementById('magnetMetalSelector').onchange=createMagnet; document.getElementById('scenarioSelect').onchange=e=>loadScenario(e.target.value);
+            document.getElementById('sceneResetButton').onclick=resetScene; document.getElementById('bboxButton').onclick=()=>bboxVisuals.visible=!bboxVisuals.visible; document.getElementById('debugButton').onclick=()=>{debugMode=!debugMode;document.getElementById('debug-panel').classList.toggle('active',debugMode);};
+            document.getElementById('magnetForceButton').onclick=()=>{magnet.forceType*=-1; document.getElementById('magnetForceAttract').classList.toggle('hidden',magnet.forceType===-1); document.getElementById('magnetForceRepel').classList.toggle('hidden',magnet.forceType===1);updateFieldLines();};
+            document.getElementById('magnetShapeButton').onclick=()=>{magnet.shape=magnet.shape==='cube'?'sphere':'cube';document.getElementById('magnetShapeCube').classList.toggle('hidden');document.getElementById('magnetShapeSphere').classList.toggle('hidden');createMagnet();updateFieldLines();};
+            document.getElementById('ballShapeButton').onclick=()=>{ballShape=ballShape==='sphere'?'cube':'sphere';document.getElementById('ballShapeCubeIcon').classList.toggle('hidden');document.getElementById('ballShapeSphereIcon').classList.toggle('hidden');resetObjects();};
+            
+            document.getElementById('magnetizeButton').onclick = () => {
+                areObjectsMagnetized = !areObjectsMagnetized;
+                const btn = document.getElementById('magnetizeButton');
+                btn.style.backgroundColor = areObjectsMagnetized ? 'var(--danger-color)' : 'transparent';
+                btn.querySelector('.tooltip').textContent = areObjectsMagnetized ? 'Demagnetize' : 'Magnetize Objects';
+
+                objects.forEach(obj => {
+                    if (areObjectsMagnetized) { 
+                        if (obj.body.materialProps.chi > 0) {
+                            const r = obj.body.position.vsub(magnet.body.position);
+                            const dist = r.length();
+                            if (dist < 0.1) return;
+                            const m1 = magnet.body.quaternion.vmult(magnet.body.dipole);
+                            const B = r.scale(3 * m1.dot(r) / (dist ** 2)).vsub(m1).scale(MU0 / (4 * Math.PI * dist ** 3));
+                            obj.body.permanentDipole = B.scale(obj.body.materialProps.chi * getObjectVolume(obj.body) * 0.1 / MU0);
+                            obj.body.isMagnetized = true;
+                            obj.mesh.material = new THREE.MeshStandardMaterial({ color: 0xffaa00, metalness: 1, roughness: 0.3, emissive: 0xffaa00, emissiveIntensity: 0.3, envMap: scene.environment });
+                        }
+                    } else { 
+                        if (obj.body.isMagnetized) {
+                            const r = obj.body.position.vsub(magnet.body.position);
+                            const distSq = r.lengthSquared();
+                            if (distSq > 1e-4) {
+                                const r_hat = r.scale(1 / Math.sqrt(distSq));
+                                const power = parseFloat(document.getElementById('strengthSlider').value);
+                                const impulseMagnitude = (power / 100) * obj.body.mass * 30;
+                                const impulseVec = r_hat.scale(impulseMagnitude);
+                                if (obj.body.sleepState === CANNON.Body.SLEEPING) obj.body.wakeUp();
+                                obj.body.applyImpulse(impulseVec);
+                            }
+                        }
+                        obj.body.isMagnetized = false;
+                        obj.body.permanentDipole = null;
+                        obj.mesh.material = obj.originalMaterial;
+                    }
+                });
+            };
+
+            window.onresize = () => { camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth,window.innerHeight); };
+            window.addEventListener('pointermove', onPointerMove); window.addEventListener('pointerdown', onPointerDown); window.addEventListener('pointerup', onPointerUp);
+            updatePlatform(30); updateBoundingPlanes(30); animate();
+        }
+        init();
+    </script>
+</body>
+</html>
